@@ -1,0 +1,25 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# env files
+.env*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# import cache and reports (re-created by npm run import)
+/data/image-check.json
+/data/image-check.json.tmp
+/data/import-report.json
+/data/overrides/perfume-gender-todo.json

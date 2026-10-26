@@ -1,0 +1,8 @@
+# SKUs the import leaves out on purpose, one per line. Everything after # is a comment.
+Dilon-183964  # English Soap Company perfume listed with a CeraVe cleanser picture
+Dilon-44497   # Nuxe Huile Prodigieuse set listed with a "Windows Server" logo as its picture
+Dilon-309445  # OGX Coconut Miracle Oil listed with a "No image available" picture
+Dilon-412277  # toy beauty trolley (toy-shop picture)
+Dilon-413596  # toy beauty purse set "Козметична чанта с аксесоари"
+Dilon-265676  # Stranger Things gift box: pen, notebook, keyring, no cosmetics
+Dilon-413551  # children's water pot for paint brushes
