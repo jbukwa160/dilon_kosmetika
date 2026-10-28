@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { price, priceShort } from "@/lib/format";
-import { CART_KEY, FAVORITES_KEY, ORDER_KEY, SHIPPING, SITE } from "@/lib/site";
+import { ADDRESS_PRICE, CART_KEY, FAVORITES_KEY, OFFICE_PRICE, ORDER_KEY, SHIPPING, SITE } from "@/lib/site";
 
 // Information pages. Company details come from SITE.company (placeholders until the client fills them in). The legal
 // texts follow Bulgarian law (ЗЗП, GDPR) but must be reviewed by the client's lawyer before going live.
@@ -29,21 +29,24 @@ function Seller() {
 }
 
 export function infoPages(): Record<InfoSlug, InfoPage> {
-  const office = price(SHIPPING.methods[0].price);
-  const toAddress = price(SHIPPING.methods[2].price);
+  const office = price(OFFICE_PRICE);
+  const toAddress = price(ADDRESS_PRICE);
   const free = priceShort(SHIPPING.freeFrom);
   const C = SITE.company;
   return {
     dostavka: {
       title: "Доставка и плащане",
-      description: `Доставка със Speedy и Еконт за ${SHIPPING.days} работни дни, от ${office}. Безплатна над ${free}. Плащане при получаване.`,
+      description: `Доставка със Speedy, Еконт, BOX NOW и Pigeon Express за ${SHIPPING.days} работни дни, от ${office}. Безплатна над ${free}. Плащане при получаване.`,
       body: (
         <>
-          <p>Изпращаме в цяла България със Speedy и Еконт — до офис, автомат или до вашия адрес.</p>
+          <p>
+            Изпращаме в цяла България със Speedy, Еконт, BOX NOW и Pigeon Express — до офис, автомат или до вашия адрес. При поръчка избирате
+            офиса или автомата от списъка на куриера.
+          </p>
           <h2>Цени на доставката</h2>
           <ul>
-            <li>До офис или автомат на Speedy или Еконт — {office}</li>
-            <li>До адрес с куриер — {toAddress}</li>
+            <li>До офис или автомат на Speedy, Еконт или Pigeon Express, или до автомат на BOX NOW — {office}</li>
+            <li>До адрес със Speedy или Еконт — {toAddress}</li>
             <li>
               <strong>Безплатно</strong> за поръчки над {free}
             </li>
@@ -226,7 +229,7 @@ export function infoPages(): Record<InfoSlug, InfoPage> {
           </p>
           <h2>5. Доставка и плащане</h2>
           <p>
-            Доставката е със Speedy или Еконт за {SHIPPING.days} работни дни, по цените, посочени на страницата{" "}
+            Доставката е със Speedy, Еконт, BOX NOW или Pigeon Express за {SHIPPING.days} работни дни, по цените, посочени на страницата{" "}
             <Link href="/info/dostavka">Доставка и плащане</Link>. Плащането е с наложен платеж при получаване. Рискът от погиване на стоката
             преминава върху вас, когато получите пратката.
           </p>
@@ -277,7 +280,7 @@ export function infoPages(): Record<InfoSlug, InfoPage> {
           </ul>
           <h2>На кого ги предаваме</h2>
           <ul>
-            <li>На куриера (Speedy или Еконт) — име, телефон, адрес и сума за наложен платеж.</li>
+            <li>На куриера, когото сте избрали (Speedy, Еконт, BOX NOW или Pigeon Express) — име, телефон, имейл, адрес или офис и сума за наложен платеж.</li>
             <li>На доставчиците на хостинг и имейл услуги, които използваме за работата на магазина.</li>
           </ul>
           <p>Не продаваме данни и не ги предоставяме на рекламни мрежи.</p>

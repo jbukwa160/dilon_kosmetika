@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IconCash, IconReturn, IconTruck } from "@/components/Icons";
+import { IconCash, IconCheck, IconReturn, IconTruck } from "@/components/Icons";
 import { Breadcrumbs } from "@/components/listing/Listing";
 import { AddToCart } from "@/components/product/AddToCart";
+import { PairWith } from "@/components/product/PairWith";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { VariantPicker } from "@/components/product/VariantPicker";
 import { ProductRail } from "@/components/ProductRail";
 import { TIPS } from "@/content/tips";
 import { familyOf, fromBrand, getProduct, related, toCard, variantKind } from "@/lib/catalog";
+import { detailsFor } from "@/lib/details";
+import { pairsFor } from "@/lib/pairs";
 import { CONCENTRATIONS } from "@/lib/filters";
 import { amount, price, priceShort } from "@/lib/format";
-import { SHIPPING, SITE } from "@/lib/site";
+import { ADDRESS_PRICE, OFFICE_PRICE, SHIPPING, SITE } from "@/lib/site";
 import { CATEGORY_BY_ID, findSub } from "@/lib/taxonomy";
 import type { Product } from "@/lib/types";
 
@@ -34,7 +37,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!p) return {};
   const sub = findSub(p.category, p.sub);
   const size = amount(p.facts);
-  const description = `${fullName(p)}${size ? `, ${size}` : ""} — ${sub?.name ?? ""}. Цена ${price(p.price)}. Доставка за ${SHIPPING.days} работни дни, плащане при получаване.`;
+  const lead = detailsFor(p.sku)?.copy?.lead;
+  const description = lead ?? `${fullName(p)}${size ? `, ${size}` : ""} — ${sub?.name ?? ""}. Цена ${price(p.price)}. Доставка за ${SHIPPING.days} работни дни, плащане при получаване.`;
   return {
     title: fullName(p),
     description,
@@ -91,18 +95,22 @@ export default async function ProductPage({ params }: Props) {
   const members = familyOf(p);
   const kind = variantKind(members);
   const tip = TIPS[p.sub];
+  const details = detailsFor(p.sku);
+  const copy = details?.copy;
   const similar = related(p, 12);
   const brandMore = fromBrand(p, 12);
   const card = toCard(p);
+  const pairs = pairsFor(p);
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: fullName(p),
-    image: [p.image],
+    image: [p.image, ...(details?.gallery ?? []).map((g) => g.src)],
     sku: p.sku,
     ...(p.ean ? { gtin: p.ean } : {}),
     ...(p.brand ? { brand: { "@type": "Brand", name: p.brand } } : {}),
+    ...(copy ? { description: [copy.lead, ...copy.body].join(" ") } : {}),
     category: `${category.name} > ${sub.name}`,
     offers: {
       "@type": "Offer",
@@ -126,8 +134,8 @@ export default async function ProductPage({ params }: Props) {
           ]}
         />
         <div className="mt-6 grid gap-10 md:mt-8 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:gap-16 xl:gap-20">
-          <div className="lg:sticky lg:top-36 lg:self-start">
-            <ProductGallery src={p.image} alt={fullName(p)} iw={p.iw} ih={p.ih} />
+          <div className="min-w-0 lg:sticky lg:top-36 lg:self-start">
+            <ProductGallery pictures={[{ src: p.image, w: p.iw, h: p.ih }, ...(details?.gallery ?? [])]} alt={fullName(p)} />
           </div>
 
           <div className="min-w-0">
@@ -169,7 +177,7 @@ export default async function ProductPage({ params }: Props) {
               <li className="flex items-start gap-3">
                 <IconTruck size={20} className="mt-0.5 shrink-0 text-garnet" />
                 <span>
-                  Доставка за {SHIPPING.days} работни дни с Speedy или Еконт — <strong className="font-semibold">безплатна над {priceShort(SHIPPING.freeFrom)}</strong>
+                  Доставка за {SHIPPING.days} работни дни със Speedy, Еконт, BOX NOW или Pigeon Express — <strong className="font-semibold">безплатна над {priceShort(SHIPPING.freeFrom)}</strong>
                 </span>
               </li>
               <li className="flex items-start gap-3">
@@ -187,8 +195,30 @@ export default async function ProductPage({ params }: Props) {
               </li>
             </ul>
 
+            {pairs.length ? <PairWith product={card} pairs={pairs} /> : null}
+
             <div className="mt-10 divide-y divide-line border-y border-line">
-              <Section title="Характеристики" open>
+              {copy ? (
+                <Section title="Описание" open>
+                  <div className="space-y-3 text-[0.9375rem] leading-relaxed text-ink-2">
+                    <p className="text-[1.0625rem] leading-snug text-ink">{copy.lead}</p>
+                    {copy.body.map((para) => (
+                      <p key={para}>{para}</p>
+                    ))}
+                  </div>
+                  {copy.highlights.length ? (
+                    <ul className="mt-4 grid gap-2 text-[0.9375rem]">
+                      {copy.highlights.map((h) => (
+                        <li key={h} className="flex gap-2.5">
+                          <IconCheck size={16} className="mt-1 shrink-0 text-garnet" />
+                          <span>{h}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </Section>
+              ) : null}
+              <Section title="Характеристики" open={!copy}>
                 <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-6 gap-y-2.5 text-[0.9375rem]">
                   {facts(p).map(([k, v]) => (
                     <div key={k} className="contents">
@@ -198,7 +228,17 @@ export default async function ProductPage({ params }: Props) {
                   ))}
                 </dl>
               </Section>
-              {tip ? (
+              {details?.ingredients ? (
+                <Section title="Състав">
+                  <p className="text-[0.875rem] leading-relaxed text-ink-2">{details.ingredients}</p>
+                  <p className="mt-3 text-[0.8125rem] text-ink-3">Производителите понякога променят състава. Актуалният е отпечатан на опаковката.</p>
+                </Section>
+              ) : null}
+              {copy?.usage && copy.basis === "moiata" ? (
+                <Section title="Как се използва">
+                  <p className="text-[0.9375rem] leading-relaxed text-ink-2">{copy.usage}</p>
+                </Section>
+              ) : tip ? (
                 <Section title={`Как се използва: ${sub.name.toLowerCase()}`}>
                   <p className="text-[0.9375rem] leading-relaxed text-ink-2">{tip}</p>
                   <p className="mt-3 text-[0.8125rem] text-ink-3">Общ съвет за този вид продукти. Винаги следвайте указанията на опаковката.</p>
@@ -207,8 +247,8 @@ export default async function ProductPage({ params }: Props) {
               <Section title="Доставка и връщане">
                 <div className="space-y-2 text-[0.9375rem] leading-relaxed text-ink-2">
                   <p>
-                    Изпращаме с Speedy и Еконт до офис, автомат или адрес. Доставката е {price(SHIPPING.methods[0].price)} до офис и{" "}
-                    {price(SHIPPING.methods[2].price)} до адрес, а при поръчка над {priceShort(SHIPPING.freeFrom)} — безплатна.
+                    Изпращаме със Speedy, Еконт, BOX NOW и Pigeon Express до офис, автомат или адрес. Доставката е {price(OFFICE_PRICE)} до офис
+                    или автомат и {price(ADDRESS_PRICE)} до адрес, а при поръчка над {priceShort(SHIPPING.freeFrom)} — безплатна.
                   </p>
                   <p>
                     Неотворен продукт в оригиналната опаковка може да върнете в {SHIPPING.returnDays} дни. От хигиенни съображения отворени

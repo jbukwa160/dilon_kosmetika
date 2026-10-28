@@ -13,8 +13,11 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } 
 import path from "node:path";
 import { parse } from "csv-parse";
 import { CATEGORY_BY_ID, findSub } from "../src/lib/taxonomy";
-import type { Product } from "../src/lib/types";
+import type { GalleryPicture, Product, ProductDetails } from "../src/lib/types";
 import { brandKey, Brands, isCanonicalBrand } from "./brands";
+import { loadSources, sourceHash, type StoredDescription } from "./enrich-descriptions";
+import type { MoiataMatch, MoiataPage } from "./moiata-fetch";
+import { buildGalleries } from "./gallery";
 import { checkImages } from "./images";
 import { cleanDisplayName } from "./names";
 import { estimatePrice } from "./prices";
@@ -394,6 +397,8 @@ async function main() {
   writeFileSync(path.join(DATA, "catalog.json"), JSON.stringify(products));
   const hosts = [...new Set(products.map((p) => new URL(p.image).hostname))].sort();
   writeFileSync(path.join(DATA, "image-hosts.json"), JSON.stringify(hosts, null, 2) + "\n");
+  const galleries = await buildGalleries(products, { dataDir: DATA, hosts, cacheFile: path.join(DATA, "image-check.json"), network: !skipImages });
+  writeDetails(products, galleries);
   writeFileSync(path.join(DATA, "import-report.json"), JSON.stringify(report, null, 2) + "\n");
 
   const perCategory = new Map<string, number>();
@@ -402,6 +407,43 @@ async function main() {
   for (const [id, count] of perCategory) console.log(`    ${CATEGORY_BY_ID.get(id)!.name}: ${count}`);
   for (const p of products) if (!findSub(p.category, p.sub)) throw new Error(`Unknown subcategory ${p.category}/${p.sub} for ${p.sku}`);
   console.log(`  details of what was skipped: data/import-report.json`);
+}
+
+const readJson = <T>(file: string, fallback: T): T => (existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as T) : fallback);
+
+/**
+ * data/details.json for the product pages: the descriptions from `npm run enrich` that are still current (one written
+ * from a source that changed since — a renamed product, a new page on moiatakozmetika.com — waits for the next
+ * `npm run enrich`), and the ingredient list of products matched on moiatakozmetika.com by barcode.
+ */
+function writeDetails(products: Product[], galleries: Map<string, GalleryPicture[]>) {
+  const stored = readJson<Record<string, StoredDescription>>(path.join(DATA, "descriptions", "descriptions.json"), {});
+  const pages = readJson<Record<string, MoiataPage>>(path.join(DATA, "moiata", "pages.json"), {});
+  const matches = readJson<Record<string, MoiataMatch>>(path.join(DATA, "moiata", "matches.json"), {});
+  const sourceOf = loadSources();
+  const details: Record<string, ProductDetails> = {};
+  let stale = 0;
+  let copies = 0;
+  let ingredients = 0;
+  for (const p of products) {
+    const entry: ProductDetails = {};
+    const d = stored[p.sku];
+    if (d && d.source === sourceHash(p, sourceOf(p))) {
+      entry.copy = { lead: d.lead, body: d.body, highlights: d.highlights, usage: d.usage, basis: d.basis };
+      copies++;
+    } else if (d) stale++;
+    // A name match may be another size or version; only a barcode match is sure enough for an ingredient list.
+    const m = matches[p.sku];
+    if (m?.how === "ean" && pages[m.handle]?.ingredients) {
+      entry.ingredients = pages[m.handle].ingredients;
+      ingredients++;
+    }
+    const gallery = galleries.get(p.sku);
+    if (gallery) entry.gallery = gallery;
+    if (entry.copy || entry.ingredients || entry.gallery) details[p.sku] = entry;
+  }
+  writeFileSync(path.join(DATA, "details.json"), JSON.stringify(details));
+  console.log(`  ${copies} descriptions, ${ingredients} ingredient lists${stale ? `, ${stale} descriptions out of date — run \`npm run enrich\`` : ""}`);
 }
 
 main().catch((err) => {

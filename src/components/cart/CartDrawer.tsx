@@ -7,7 +7,7 @@ import { useEffect, useId, useRef } from "react";
 import { IconArrowRight, IconBag, IconClose, IconMinus, IconPlus, IconTrash } from "@/components/Icons";
 import { useDialog } from "@/components/useDialog";
 import { price, priceShort } from "@/lib/format";
-import { SHIPPING } from "@/lib/site";
+import { OFFICE_PRICE, SHIPPING } from "@/lib/site";
 import { MAX_PER_LINE, useCart } from "./CartProvider";
 
 export function FreeShippingMeter({ subtotal }: { subtotal: number }) {
@@ -31,6 +31,18 @@ export function FreeShippingMeter({ subtotal }: { subtotal: number }) {
         />
       </div>
     </div>
+  );
+}
+
+/** "В комплект −12 %" under a cart line that is part of a discounted set. */
+export function SetTag({ sku }: { sku: string }) {
+  const { bundles } = useCart();
+  const set = bundles.find((b) => b.skus.includes(sku));
+  if (!set) return null;
+  return (
+    <span className="mt-1 inline-flex w-fit rounded-full bg-blush px-2 py-0.5 text-[0.6875rem] font-semibold text-garnet">
+      В комплект −{Math.round(set.discount * 100)}%
+    </span>
   );
 }
 
@@ -92,7 +104,7 @@ export function CartDrawer() {
         ) : (
           <>
             <div className="border-b border-line px-5 py-4 sm:px-6">
-              <FreeShippingMeter subtotal={cart.subtotal} />
+              <FreeShippingMeter subtotal={cart.total} />
             </div>
             <ul className="flex-1 divide-y divide-line overflow-y-auto overscroll-contain px-5 sm:px-6">
               {cart.lines.map((l) => (
@@ -105,6 +117,7 @@ export function CartDrawer() {
                     <Link href={`/produkt/${l.slug}`} className="clamp-2 mt-0.5 text-[0.9375rem] leading-snug" onClick={() => cart.setOpen(false)}>
                       {l.name}
                     </Link>
+                    <SetTag sku={l.sku} />
                     <div className="mt-auto flex items-center justify-between gap-3 pt-3">
                       <QtyStepper qty={l.qty} max={Math.min(MAX_PER_LINE, l.stock)} onChange={(n) => cart.setQty(l.sku, n)} label={l.name} />
                       <p className="num text-[0.9375rem] font-semibold">{price(l.price * l.qty)}</p>
@@ -117,12 +130,21 @@ export function CartDrawer() {
               ))}
             </ul>
             <div className="shrink-0 border-t border-line bg-cream px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">
+              {cart.discount > 0 ? (
+                <div className="mb-1.5 flex items-baseline justify-between text-[0.875rem]">
+                  <span className="text-garnet">Отстъпка „Перфектни заедно“</span>
+                  <span className="num font-semibold text-garnet">−{price(cart.discount)}</span>
+                </div>
+              ) : null}
               <div className="flex items-baseline justify-between">
                 <span className="text-[0.9375rem] text-ink-2">Междинна сума</span>
-                <span className="num text-[1.25rem] font-semibold">{price(cart.subtotal)}</span>
+                <span className="num text-[1.25rem] font-semibold">
+                  {cart.discount > 0 ? <s className="mr-2 text-[0.875rem] font-normal text-ink-3">{price(cart.subtotal)}</s> : null}
+                  {price(cart.total)}
+                </span>
               </div>
               <p className="mt-1 text-[0.8125rem] text-ink-3">
-                Доставка от {price(SHIPPING.methods[0].price)}, безплатна над {priceShort(SHIPPING.freeFrom)}. Плащате при получаване.
+                Доставка от {price(OFFICE_PRICE)}, безплатна над {priceShort(SHIPPING.freeFrom)}. Плащате при получаване.
               </p>
               <Link href="/poruchka" className="btn btn-ink mt-4 w-full" onClick={() => cart.setOpen(false)}>
                 Към поръчката <IconArrowRight size={18} />

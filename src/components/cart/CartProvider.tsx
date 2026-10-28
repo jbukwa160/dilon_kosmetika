@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { CART_KEY } from "@/lib/site";
+import { type AppliedBundle, applyBundles, type BundleClaim } from "@/lib/bundle-math";
+import { bundleDiscount, CART_BUNDLES_KEY, CART_KEY } from "@/lib/site";
 import type { CardProduct } from "@/lib/types";
 
 export type CartLine = CardProduct & { qty: number };
@@ -11,11 +12,20 @@ type CartContext = {
   /** False until the cart has been read from localStorage (avoids showing "empty" for a moment). */
   ready: boolean;
   count: number;
+  /** All products at their own prices. */
   subtotal: number;
+  /** Sets from "Перфектни заедно" whose products are all in the cart, with their discount. */
+  bundles: AppliedBundle[];
+  /** What the sets save. */
+  discount: number;
+  /** Subtotal minus the set discounts: what the goods cost. */
+  total: number;
   open: boolean;
   setOpen: (open: boolean) => void;
   /** Adds `qty` (capped at stock). Returns the quantity actually in the cart afterwards. */
   add: (product: CardProduct, qty?: number) => number;
+  /** Adds the product and its extras (one each) as a set with the discount for its size. */
+  addBundle: (products: CardProduct[]) => void;
   setQty: (sku: string, qty: number) => void;
   remove: (sku: string) => void;
   clear: () => void;
@@ -27,6 +37,30 @@ type CartContext = {
 const Ctx = createContext<CartContext | null>(null);
 
 export const MAX_PER_LINE = 20;
+
+/**
+ * Sets after a product left the cart: without one of its extras a set is smaller and gets the smaller discount; without
+ * its main product, or with only one product left, it is no set any more.
+ */
+function withoutSku(claims: BundleClaim[], sku: string): BundleClaim[] {
+  return claims.flatMap((c) => {
+    if (!c.skus.includes(sku)) return [c];
+    const skus = c.skus.filter((s) => s !== sku);
+    return c.skus[0] === sku || skus.length < 2 ? [] : [{ skus, discount: bundleDiscount(skus.length) }];
+  });
+}
+
+function readBundles(): BundleClaim[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CART_BUNDLES_KEY) ?? "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+      (b) => b && Array.isArray(b.skus) && b.skus.length >= 2 && b.skus.every((s: unknown) => typeof s === "string") && Number.isFinite(b.discount),
+    );
+  } catch {
+    return [];
+  }
+}
 
 function read(): CartLine[] {
   try {
@@ -45,6 +79,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [added, setAdded] = useState<CartContext["added"]>(null);
+  const [claims, setClaims] = useState<BundleClaim[]>([]);
   // Every change goes through commit(), so linesRef is always current, even between two quick clicks.
   const linesRef = useRef<CartLine[]>([]);
   const commit = useCallback((update: (current: CartLine[]) => CartLine[]) => {
@@ -58,6 +93,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     commit(() => stored);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reading localStorage can only happen after mount
     setReady(true);
+    setClaims(readBundles());
     if (!stored.length) return;
     const skus = stored.map((l) => l.sku).join(",");
     fetch(`/api/cart?skus=${encodeURIComponent(skus)}`)
@@ -88,9 +124,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lines, ready]);
 
+  // A set one of whose products was removed no longer counts, also when that product is added again on its own.
+  const liveClaims = useMemo(() => claims.filter((c) => c.skus.every((sku) => lines.some((l) => l.sku === sku))), [claims, lines]);
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      localStorage.setItem(CART_BUNDLES_KEY, JSON.stringify(liveClaims));
+    } catch {
+      // As above.
+    }
+  }, [liveClaims, ready]);
+
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === CART_KEY) commit(() => read());
+      if (e.key === CART_BUNDLES_KEY) setClaims(readBundles());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -118,19 +166,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           .map((l) => (l.sku === sku ? { ...l, qty: Math.max(0, Math.min(qty, Math.min(MAX_PER_LINE, l.stock))) } : l))
           .filter((l) => l.qty > 0),
       );
+      if (qty <= 0) setClaims((current) => withoutSku(current, sku));
     },
     [commit],
   );
 
-  const remove = useCallback((sku: string) => commit((current) => current.filter((l) => l.sku !== sku)), [commit]);
-  const clear = useCallback(() => commit(() => []), [commit]);
+  const remove = useCallback(
+    (sku: string) => {
+      commit((current) => current.filter((l) => l.sku !== sku));
+      setClaims((current) => withoutSku(current, sku));
+    },
+    [commit],
+  );
+  const clear = useCallback(() => {
+    commit(() => []);
+    setClaims([]);
+  }, [commit]);
+
+  const addBundle = useCallback(
+    (products: CardProduct[]) => {
+      const added = products.filter((p) => add(p, 1) > 0);
+      if (added.length < 2) return;
+      const skus = added.map((p) => p.sku);
+      const key = skus.join("+");
+      setClaims((current) => (current.some((c) => c.skus.join("+") === key) ? current : [...current, { skus, discount: bundleDiscount(skus.length) }]));
+    },
+    [add],
+  );
   const dismissAdded = useCallback(() => setAdded(null), []);
 
   const value = useMemo<CartContext>(() => {
     const count = lines.reduce((s, l) => s + l.qty, 0);
     const subtotal = Math.round(lines.reduce((s, l) => s + l.qty * l.price, 0) * 100) / 100;
-    return { lines, ready, count, subtotal, open, setOpen, add, setQty, remove, clear, added, dismissAdded };
-  }, [lines, ready, open, add, setQty, remove, clear, added, dismissAdded]);
+    const { applied, discount } = applyBundles(lines, liveClaims);
+    const total = Math.round((subtotal - discount) * 100) / 100;
+    return { lines, ready, count, subtotal, bundles: applied, discount, total, open, setOpen, add, addBundle, setQty, remove, clear, added, dismissAdded };
+  }, [lines, liveClaims, ready, open, add, addBundle, setQty, remove, clear, added, dismissAdded]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

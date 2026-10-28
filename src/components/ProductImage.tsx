@@ -14,10 +14,12 @@ type Props = {
   /** Inset of the picture inside its tile, in % of the tile. */
   inset?: number;
   className?: string;
+  /** Shown as is (a host Next.js may not optimise; it serves a fitting size itself). */
+  unoptimized?: boolean;
 };
 
 /** A product photo on its tile. Lazy pictures fade in once loaded; pictures above the fold appear at once. */
-export function ProductImage({ src, alt, iw, ih, sizes, priority = false, inset = 9, className = "" }: Props) {
+export function ProductImage({ src, alt, iw, ih, sizes, priority = false, inset = 9, className = "", unoptimized = false }: Props) {
   const ref = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(priority);
 
@@ -37,6 +39,7 @@ export function ProductImage({ src, alt, iw, ih, sizes, priority = false, inset 
           sizes={sizes}
           quality={75}
           priority={priority}
+          unoptimized={unoptimized}
           className={`tile-img ${className}`}
           data-loaded={loaded}
           onLoad={() => setLoaded(true)}

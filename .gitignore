@@ -23,3 +23,8 @@ next-env.d.ts
 /data/image-check.json.tmp
 /data/import-report.json
 /data/overrides/perfume-gender-todo.json
+
+# log of the moiatakozmetika.com reader
+data/moiata/run.log
+data/descriptions/run.log
+data/lilly/run.log

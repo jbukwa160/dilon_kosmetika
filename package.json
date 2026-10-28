@@ -8,9 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "import": "tsx scripts/import-catalog.ts"
+    "import": "tsx scripts/import-catalog.ts",
+    "moiata": "tsx scripts/moiata-fetch.ts",
+    "enrich": "tsx scripts/enrich-descriptions.ts",
+    "couriers": "tsx --conditions=react-server scripts/check-couriers.ts",
+    "lilly": "tsx scripts/lilly-fetch.ts"
   },
   "dependencies": {
+    "csv-parse": "^7.0.3",
     "next": "16.4.2",
     "nodemailer": "^10.1.7",
     "react": "19.3.0",
@@ -24,7 +29,6 @@
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "csv-parse": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "image-size": "^2.0.2",

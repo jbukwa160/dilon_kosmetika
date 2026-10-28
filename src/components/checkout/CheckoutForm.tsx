@@ -4,11 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useId, useRef, useState } from "react";
-import { FreeShippingMeter, QtyStepper } from "@/components/cart/CartDrawer";
+import { FreeShippingMeter, QtyStepper, SetTag } from "@/components/cart/CartDrawer";
 import { MAX_PER_LINE, useCart } from "@/components/cart/CartProvider";
 import { IconCash, IconTrash } from "@/components/Icons";
 import { price } from "@/lib/format";
-import { ORDER_KEY, SHIPPING, shippingPrice, type ShippingMethodId } from "@/lib/site";
+import { CARRIERS, ORDER_KEY, SHIPPING, shippingMethod, shippingPrice, type ShippingMethodId } from "@/lib/site";
+import { DeliveryPicker, EMPTY_DELIVERY, type DeliveryValue } from "./DeliveryPicker";
 
 type Errors = Record<string, string>;
 
@@ -16,9 +17,10 @@ type Errors = Record<string, string>;
 const ClearErrorCtx = createContext<(name: string) => void>(() => {});
 
 export function CheckoutForm() {
-  const { lines, ready, subtotal, setQty, remove, clear } = useCart();
+  const { lines, ready, subtotal, discount, total, bundles, setQty, remove, clear } = useCart();
   const router = useRouter();
   const [method, setMethod] = useState<ShippingMethodId>("speedy-office");
+  const [delivery, setDelivery] = useState<DeliveryValue>(EMPTY_DELIVERY);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState("");
   const [sending, setSending] = useState(false);
@@ -31,8 +33,17 @@ export function CheckoutForm() {
       if (!Object.keys(next).length) setFormError("");
       return next;
     });
-  const shipping = shippingPrice(method, subtotal);
-  const needs = SHIPPING.methods.find((m) => m.id === method)!.needs;
+  // Free delivery counts what the goods cost after the set discounts, the same as the server.
+  const shipping = shippingPrice(method, total);
+  const chosen = shippingMethod(method)!;
+
+  function pickMethod(id: ShippingMethodId) {
+    const next = shippingMethod(id)!;
+    // Places and offices are each courier's own: keep the place's name (the new courier's list finds it again), drop the ids.
+    setDelivery((d) => ({ ...d, ...(next.carrier !== chosen.carrier ? { cityId: "" } : {}), officeId: "", office: "" }));
+    setMethod(id);
+    ["city", "office", "address", "postcode"].forEach(clearError);
+  }
 
   if (!ready) return <div className="h-96" aria-busy="true" />;
 
@@ -58,14 +69,12 @@ export function CheckoutForm() {
       phone: value("phone"),
       email: value("email"),
       method,
-      city: value("city"),
-      postcode: value("postcode"),
-      office: value("office"),
-      address: value("address"),
+      ...delivery,
       note: value("note"),
       terms: fd.get("terms") === "on",
       website: value("website"),
       items: lines.map((l) => ({ sku: l.sku, qty: l.qty })),
+      bundles: bundles.map((b) => ({ skus: b.skus })),
     };
     setSending(true);
     setFormError("");
@@ -108,53 +117,39 @@ export function CheckoutForm() {
           </Step>
 
           <Step n={2} title="Доставка">
-            <fieldset>
+            <fieldset className="space-y-5">
               <legend className="sr-only">Начин на доставка</legend>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {SHIPPING.methods.map((m) => {
-                  const checked = method === m.id;
-                  const cost = shippingPrice(m.id, subtotal);
-                  return (
-                    <label
-                      key={m.id}
-                      className={`relative flex cursor-pointer flex-col rounded-xl border p-4 transition-[border-color,box-shadow,background-color] duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-garnet ${
-                        checked ? "border-ink bg-cream shadow-[inset_0_0_0_1px_var(--color-ink)]" : "border-line-strong hover:border-ink/50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="method"
-                        value={m.id}
-                        checked={checked}
-                        onChange={() => {
-                          setMethod(m.id);
-                          ["office", "address", "postcode"].forEach(clearError);
-                        }}
-                        className="sr-only"
-                      />
-                      <span className="text-[0.9375rem] font-semibold">{m.short}</span>
-                      <span className="mt-1 text-[0.8125rem] leading-snug text-ink-3">{m.label}</span>
-                      <span className="num mt-3 text-[0.9375rem] font-semibold">{cost ? price(cost) : <span className="text-sage">Безплатна</span>}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              {(["office", "address"] as const).map((needs) => (
+                <div key={needs} role="group" aria-labelledby={`ship-${needs}`}>
+                  <p id={`ship-${needs}`} className="mb-2.5 text-[0.8125rem] font-semibold text-ink-2">
+                    {needs === "office" ? "До офис или автомат" : "До адрес"}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {SHIPPING.methods
+                      .filter((m) => m.needs === needs)
+                      .map((m) => {
+                        const checked = method === m.id;
+                        const cost = shippingPrice(m.id, total);
+                        return (
+                          <label
+                            key={m.id}
+                            className={`relative flex cursor-pointer flex-col rounded-xl border p-3.5 transition-[border-color,box-shadow,background-color] duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-garnet ${
+                              checked ? "border-ink bg-cream shadow-[inset_0_0_0_1px_var(--color-ink)]" : "border-line-strong hover:border-ink/50"
+                            }`}
+                          >
+                            <input type="radio" name="method" value={m.id} checked={checked} onChange={() => pickMethod(m.id)} className="sr-only" />
+                            <span className="text-[0.9375rem] font-semibold">{CARRIERS[m.carrier]}</span>
+                            <span className="mt-0.5 text-[0.8125rem] leading-snug text-ink-3">{m.detail}</span>
+                            <span className="num mt-2.5 text-[0.9375rem] font-semibold">{cost ? price(cost) : <span className="text-sage">Безплатна</span>}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
             </fieldset>
-            <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_9rem]">
-              <Field label="Населено място" name="city" autoComplete="address-level2" errors={errors} className={needs === "address" ? "" : "sm:col-span-2"} />
-              {needs === "address" ? <Field label="Пощенски код" name="postcode" autoComplete="postal-code" inputMode="numeric" maxLength={4} errors={errors} /> : null}
-              {needs === "office" ? (
-                <Field
-                  key="office"
-                  label={method === "speedy-office" ? "Офис или автомат на Speedy" : "Офис или автомат на Еконт"}
-                  name="office"
-                  errors={errors}
-                  className="sm:col-span-2"
-                  hint="Напишете името или адреса на офиса — ще го потвърдим по телефона."
-                />
-              ) : (
-                <Field key="address" label="Адрес" name="address" autoComplete="street-address" errors={errors} className="sm:col-span-2" hint="Улица, номер, блок, вход, етаж, апартамент." />
-              )}
+            <div className="mt-6">
+              <DeliveryPicker method={chosen} value={delivery} onChange={setDelivery} errors={errors} clearError={clearError} />
             </div>
           </Step>
 
@@ -194,6 +189,7 @@ export function CheckoutForm() {
                   <div className="min-w-0 flex-1">
                     {l.brand ? <p className="eyebrow truncate">{l.brand}</p> : null}
                     <p className="clamp-2 text-[0.875rem] leading-snug">{l.name}</p>
+                    <SetTag sku={l.sku} />
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <QtyStepper qty={l.qty} max={Math.min(MAX_PER_LINE, l.stock)} onChange={(v) => setQty(l.sku, v)} label={l.name} />
                       <span className="num text-[0.875rem] font-semibold">{price(l.price * l.qty)}</span>
@@ -206,20 +202,26 @@ export function CheckoutForm() {
               ))}
             </ul>
             <div className="border-t border-line pt-4">
-              <FreeShippingMeter subtotal={subtotal} />
+              <FreeShippingMeter subtotal={total} />
             </div>
             <dl className="mt-5 space-y-2 text-[0.9375rem]">
               <div className="flex justify-between">
                 <dt className="text-ink-2">Продукти</dt>
                 <dd className="num">{price(subtotal)}</dd>
               </div>
+              {discount > 0 ? (
+                <div className="flex justify-between text-garnet">
+                  <dt>Отстъпка „Перфектни заедно“</dt>
+                  <dd className="num font-semibold">−{price(discount)}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <dt className="text-ink-2">Доставка</dt>
                 <dd className="num">{shipping ? price(shipping) : "безплатна"}</dd>
               </div>
               <div className="flex items-baseline justify-between border-t border-line pt-3">
                 <dt className="font-semibold">Общо</dt>
-                <dd className="num text-[1.4rem] font-semibold">{price(subtotal + shipping)}</dd>
+                <dd className="num text-[1.4rem] font-semibold">{price(total + shipping)}</dd>
               </div>
             </dl>
             <p className="mt-1 text-right text-[0.75rem] text-ink-3">Цените са с ДДС</p>
@@ -245,7 +247,7 @@ export function CheckoutForm() {
             ) : null}
 
             <button type="submit" className="btn btn-ink mt-5 w-full" disabled={sending} aria-busy={sending}>
-              {sending ? "Изпращане…" : `Поръчай · ${price(subtotal + shipping)}`}
+              {sending ? "Изпращане…" : `Поръчай · ${price(total + shipping)}`}
             </button>
             <p className="mt-3 text-center text-[0.75rem] text-ink-3">Ще потвърдим поръчката по телефона в работно време.</p>
           </div>

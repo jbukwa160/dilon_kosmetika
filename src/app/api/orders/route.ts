@@ -1,7 +1,7 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import {
-  buildOrder, deliveryIssues, isOwnMessage, mailOrder, MESSAGES, OrderError, orderSchema, recordOrder, saveOrder, tooManyAttempts,
-  tooManyOrders,
+  buildOrder, checkOffice, deliveryIssues, isOwnMessage, mailOrder, MESSAGES, OrderError, orderSchema, recordOrder, saveOrder,
+  tooManyAttempts, tooManyOrders, where,
 } from "@/lib/orders";
 
 export async function POST(req: NextRequest) {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (tooManyOrders(ip)) return NextResponse.json({ error: MESSAGES.busy }, { status: 429 });
 
   try {
-    const order = buildOrder(parsed.data);
+    const order = buildOrder(await checkOffice(parsed.data));
     await saveOrder(order);
     recordOrder(ip);
     after(() => mailOrder(order));
@@ -39,13 +39,15 @@ export async function POST(req: NextRequest) {
       number: order.number,
       total: order.total,
       subtotal: order.subtotal,
+      discount: order.discount,
       shipping: order.shipping,
       email: order.customer.email,
       delivery: order.delivery.label,
+      where: where(order),
       emailSent: Boolean(process.env.SMTP_HOST),
     });
   } catch (err) {
-    if (err instanceof OrderError) return NextResponse.json({ error: err.message, fields: err.fields }, { status: 409 });
+    if (err instanceof OrderError) return NextResponse.json({ error: err.message, fields: err.fields }, { status: Object.keys(err.fields).length ? 422 : 409 });
     console.error("[orders] could not save order", err);
     return NextResponse.json({ error: MESSAGES.failed }, { status: 500 });
   }

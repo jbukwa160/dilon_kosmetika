@@ -55,5 +55,25 @@ export type Product = {
 
 export type Brand = { slug: string; name: string; count: number };
 
+/** A product's own description (data/details.json, written by `npm run enrich` and `npm run import`). */
+export type ProductCopy = {
+  /** One or two sentences that make the product clear. */
+  lead: string;
+  /** Short paragraphs. */
+  body: string[];
+  /** Short concrete points, no full stops. */
+  highlights: string[];
+  /** How to use it, when the source says; otherwise "". */
+  usage: string;
+};
+
+/** "moiata": rewritten from moiatakozmetika.com; "name": written from the name, brand and category only. */
+export type CopyBasis = "moiata" | "name";
+/** What the product page shows beyond the catalog: our description and, for products matched by barcode, the ingredients. */
+/** One more picture of a product (data/details.json). `direct`: shown as is, not through Next.js's optimiser. */
+export type GalleryPicture = { src: string; w: number; h: number; direct?: true };
+
+export type ProductDetails = { copy?: ProductCopy & { basis: CopyBasis }; ingredients?: string; gallery?: GalleryPicture[] };
+
 /** The part of a product that client components (cart, search suggestions) need. */
 export type CardProduct = Pick<Product, "sku" | "slug" | "name" | "brand" | "price" | "image" | "stock"> & { variant?: string };

@@ -11,9 +11,13 @@ import { ORDER_KEY, SITE } from "@/lib/site";
 type Saved = {
   number: string;
   total: number;
+  /** What the "Перфектни заедно" sets saved (missing in orders placed before sets existed). */
+  discount?: number;
   shipping: number;
   email: string;
   delivery: string;
+  /** "Офис/автомат: …" or "Адрес: …" (missing in orders placed before the couriers were connected). */
+  where?: string;
   emailSent: boolean;
   lines?: { name: string; brand: string; qty: number; image: string }[];
 };
@@ -69,9 +73,18 @@ export function ThankYou() {
             </ul>
           ) : null}
           <dl className="mt-4 space-y-2 border-t border-line pt-4 text-[0.9375rem]">
+            {order.discount ? (
+              <div className="flex justify-between gap-4 text-garnet">
+                <dt>Отстъпка „Перфектни заедно“</dt>
+                <dd className="num font-semibold">−{price(order.discount)}</dd>
+              </div>
+            ) : null}
             <div className="flex justify-between gap-4">
               <dt className="text-ink-2">Доставка</dt>
-              <dd className="text-right">{order.delivery}</dd>
+              <dd className="text-right">
+                {order.delivery}
+                {order.where ? <span className="mt-0.5 block text-[0.8125rem] text-ink-3">{order.where.replace(/^(Офис\/автомат|Адрес): /, "")}</span> : null}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="font-semibold">За плащане при получаване</dt>
